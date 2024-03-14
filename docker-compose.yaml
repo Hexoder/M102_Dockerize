@@ -1,0 +1,117 @@
+version: '3'
+
+services:
+
+  django:
+    build:
+      context: ./M102_back/M102_Final
+    command: gunicorn --workers=2 --bind=0.0.0.0:8000 ecommerce.wsgi:application
+    expose:
+      - 8000
+    env_file:
+      - ./M102_back/M102_Final/.env
+    depends_on:
+      - postgresql
+    volumes:
+      - django:/django
+      - static_volume:/django/static
+    networks:
+      - backend
+
+
+  postgresql:
+    image: postgres:latest
+    # ports:
+    #   - "5432:5432"
+    env_file:
+      - ./M102_back/M102_Final/.env.db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
+    networks:
+      - backend
+ 
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - 80:80
+    depends_on:
+      - django
+      - react
+    volumes:
+      - static_volume:/django/static
+      - react_build:/react/dist
+    networks:
+      - backend
+
+  celery:
+    build:
+      context: ./M102_back/M102_Final
+      dockerfile: ./Dockerfile.celery
+    command: celery -A ecommerce worker --loglevel=info
+    # environment:
+    #   - CELERY_BROKER_URL=amqp://hexoder:12345@rabbitmq:5672/
+    #   - CELERY_RESULT_BACKEND=redis://:12345@redis:6379/3
+    #   - CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP=TRUE
+
+    networks:
+      - backend
+    depends_on:
+      - rabbitmq
+      - redis
+
+  rabbitmq:
+    restart: always
+    build:
+      context: ./rabbitmq
+    container_name: rabbitmq
+    hostname: rabbitmq
+    expose:
+      - 5672
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    # environment:
+    #   - RABBITMQ_NODENAME=rabbit@rabbitmq
+    #   - RABBITMQ_DEFAULT_USER=hexoder
+    #   - RABBITMQ_DEFAULT_PASS=12345
+    networks:
+      - backend
+
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    hostname: redis
+    expose:
+      - 6379
+    ports:
+      - "6379:6379"
+    restart: always
+    command: /bin/sh -c "redis-server --requirepass $$REDIS_HOST_PASSWORD"
+    env_file:
+      - redis.env
+    networks:
+      - backend
+
+
+  react:
+    build:
+      context: ./M102_front/M102_Final
+    volumes:
+      - react:/react
+      - react_build:/react/dist
+
+volumes:
+  django:
+  postgres_data:
+  static_volume:
+  react_build:
+  react:
+
+networks:
+  backend:
+    name: backend
+#     driver: overlay
+
